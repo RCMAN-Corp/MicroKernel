@@ -191,6 +191,132 @@ L4Linux is a binary-compatible Linux port that runs on L4Re.
 - Higher resource overhead
 - Not a "native" solution
 
+## QEMU-Only Deployment
+
+Since you're targeting QEMU exclusively rather than physical hardware, this **significantly simplifies** your project:
+
+### Advantages of QEMU-Only Approach
+
+1. **No Real Hardware Drivers Needed**
+   - Use paravirtualized devices (virtio)
+   - Standard QEMU devices are well-documented
+   - No need to support diverse physical hardware
+
+2. **Simplified Device Stack**
+   ```
+   OS/2 App → OS/2 API → L4Re → QEMU virtio drivers
+   ```
+   Instead of dealing with hundreds of real hardware drivers
+
+3. **Debugging is Much Easier**
+   - QEMU's built-in debugging support
+   - GDB integration
+   - Snapshots and state inspection
+   - Monitor commands for inspection
+
+4. **Testing and Development**
+   - Instant boot/reboot cycles
+   - Easy to automate testing
+   - No risk of hardware damage
+   - Can test on any development machine
+
+### Recommended QEMU Configuration
+
+```bash
+qemu-system-x86_64 \
+  -kernel fiasco \
+  -m 512M \
+  -smp 2 \
+  -serial stdio \
+  -display gtk \
+  -device virtio-net-pci \
+  -device virtio-blk-pci \
+  -device virtio-scsi-pci \
+  -enable-kvm  # If available
+```
+
+### Focus Areas for QEMU Deployment
+
+#### 1. Virtio Device Support (Priority)
+Implement L4Re drivers for:
+- **virtio-blk** - Block storage
+- **virtio-net** - Networking  
+- **virtio-console** - Serial/console
+- **virtio-gpu** - Graphics (optional)
+
+#### 2. Simplified Hardware Abstraction
+You only need to support:
+- QEMU's standard PC platform
+- VGA or virtio-gpu for graphics
+- PS/2 or virtio-input for keyboard/mouse
+- Standard x86 timers and interrupts
+
+#### 3. OS/2 Device Driver Translation
+Map OS/2 device requests to virtio:
+```
+OS/2 DASD (disk) driver → virtio-blk
+OS/2 network adapter → virtio-net
+OS/2 display driver → QEMU VGA/virtio-gpu
+```
+
+### Streamlined Development Path
+
+**Phase 1: Boot in QEMU (1-2 months)**
+1. Get Fiasco kernel booting in QEMU
+2. Load L4Re user-space components
+3. Start basic OS/2 personality server
+
+**Phase 2: Console Apps (6-12 months)**
+1. Implement DOSCALL1.DLL basics
+2. File I/O using virtio-blk
+3. Get simple text-based OS/2 apps running
+
+**Phase 3: Virtio Integration (3-6 months)**
+1. Full virtio-blk support with OS/2 filesystem
+2. virtio-net for networking
+3. virtio-console for I/O
+
+**Phase 4: GUI Support (Optional, 12-18 months)**
+1. QEMU VGA framebuffer
+2. Basic Presentation Manager
+3. OS/2 GUI applications
+
+### QEMU Testing Script
+
+```bash
+#!/bin/bash
+# test-os2-l4re.sh
+
+KERNEL="build-x86/fiasco"
+MODULES="sigma0:bootstrap:os2server:l4re"
+MEMORY="512M"
+
+qemu-system-x86_64 \
+  -kernel "$KERNEL" \
+  -m "$MEMORY" \
+  -smp 2 \
+  -serial mon:stdio \
+  -display gtk \
+  -device virtio-blk-pci,drive=hd0 \
+  -drive file=os2disk.img,if=none,id=hd0,format=raw \
+  -device virtio-net-pci,netdev=net0 \
+  -netdev user,id=net0,hostfwd=tcp::5555-:22 \
+  -monitor unix:qemu-monitor-socket,server,nowait \
+  -gdb tcp::1234 \
+  -S  # Start paused for debugging
+```
+
+### Key Simplifications
+
+| Aspect | Physical Hardware | QEMU Only |
+|--------|------------------|-----------|
+| Driver count | Hundreds | ~5-10 |
+| Driver complexity | Very High | Medium |
+| Testing time | Hours | Minutes |
+| Hardware bugs | Must handle | Non-existent |
+| Debugging | Difficult | Easy |
+| Development cost | High | Low |
+
 ## Testing Strategy
 
 ### Test Applications in Order of Complexity
@@ -220,6 +346,21 @@ You'll need reference implementations from:
 - OS/2 Warp 4.52 (eComStation/ArcaOS continuation)
 
 ## Realistic Timeline
+
+### QEMU-Only Deployment (Revised)
+
+| Phase | Duration | Complexity |
+|-------|----------|------------|
+| Boot L4Re in QEMU | 1-2 months | Medium |
+| Basic infrastructure | 4-8 months | High |
+| Core APIs (console apps) | 8-16 months | Very High |
+| Virtio device support | 3-6 months | Medium |
+| Advanced features | 8-12 months | High |
+| GUI support (optional) | 12-18 months | Very High |
+| **Total (minimal console system)** | **16-32 months** | **1-3 developers** |
+| **Total (with GUI)** | **28-50 months** | **2-5 developers** |
+
+### Physical Hardware (Original Estimates)
 
 | Phase | Duration | Complexity |
 |-------|----------|------------|
